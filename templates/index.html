@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Dashboard | SegFormer</title>
+    <!-- Link to Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.5.0/Chart.min.js"></script>
+</head>
+
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+    <a class="navbar-brand" href="#">Dashboard</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ml-auto">
+        <li class="nav-item active">
+          <a class="nav-link" href="#prediction" onclick="changeActive(this)">Prédiction de masques <span class="sr-only">(current)</span></a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#dataset" onclick="changeActive(this)">Dataset</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#catdistribution" onclick="changeActive(this)">Répartition des catégories</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#comparaison" onclick="changeActive(this)">Comparaison des modèles</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#analyse" onclick="changeActive(this)">Analyse comparative</a>
+        </li>
+      </ul>
+    </div>
+</nav>
+
+<div id="prediction" class="container mt-5 pt-5">
+    <h2 class="text-center">Prédiction de masques avec SegFormer MiT-B0</h2>
+
+    <!-- Image Selection Form -->
+    <div class="card p-4">
+        <form action="predicted" method="POST">
+            <div class="form-group">
+                <label for="option">Sélectionner votre image</label>
+                <select class="form-control" id="option" name="option">
+                    {% for o in img_list %}
+                        {% if img_index == o %}
+                            <option value="{{ o }}" selected>{{ o }}</option>
+                        {% else %}
+                            <option value="{{ o }}">{{ o }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Sélectionner</button>
+        </form>
+    </div>
+
+    <!-- Prediction Results -->
+    {% if img_data %}
+    <div class="container mt-4">
+        <h3>Prédiction pour l'image numéro {{ img_index }}</h3>
+        <img src="data:image/png;base64,{{ img_data }}" alt="Image" class="img-fluid">
+    </div>
+    {% endif %}
+</div>
+
+<div id="dataset" class="container mt-5">
+    <h2 class="text-center">Dataset utilisé : Cityscapes</h2>
+    <div class="card p-4">
+        <p>
+            Le jeu de données <a href="https://www.cityscapes-dataset.com/">Cityscapes</a> est composé d'images urbaines 
+            prises depuis des véhicules. Chaque image est accompagnée d'annotations appelées "masques" 
+            qui identifient des éléments comme les routes, les bâtiments, les personnes, etc. </br>
+            Cityscapes comprend 5 000 images de 2048x1024 pixels, avec 5 000 masques de segmentation correspondants.
+        </p>
+        <p>
+            Dans notre situation particulière, chaque masque doit comporter 8 canaux, car nous utilisons 8 catégories principales comme classes.
+            Pour illustrer cela, nous allons prendre une image au hasard et afficher individuellement chaque canal de sa matrice de segmentation.
+        </p>
+        <div class="container mt-4">
+            <h3>Image avec ses 8 classes</h3>
+            <img src="{{url_for('static', filename='allmasks.png')}}"  alt="allmasks" class="img-fluid">
+        </div>
+    </div>
+</div>
+
+<div id="catdistribution" class="container mt-5">
+    <h2 class="text-center">Analyse de la répartition des catégories dans le dataset</h2>
+    <div class="card p-4">
+        <canvas id="catdistributionChart" width="400" height="200"></canvas>
+        <script>
+            Chart.defaults.global.defaultFontSize = 16
+            var ctx = document.getElementById("catdistributionChart").getContext("2d");
+            
+            var barChart = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: {{ cats_data['labels'] | safe }},
+                    datasets : [
+                        {
+                            label: "Distribution de la catégorie (%)",
+                            backgroundColor: ["#e60049", "#0bb4ff", "#50e991", "#e6d800", "#9b19f5", "#ffa300", "#dc0ab4", "#b3d4ff"],
+                            data: {{ cats_data['values'] | safe }},
+                            borderColor: "rgb(75, 192, 192)",
+                        }
+                    ]
+                },
+                options: {
+                    legend: { display: false },
+                    title: {
+                        display: true,
+                        text: 'Distribution des catégories dans le dataset (%)',
+                        fontSize: 24,
+                    },
+                    scales: {
+                        yAxes: [{
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    return value + '%';
+                                }
+                            }
+                        }]
+                    }
+                }
+            })
+        </script>
+        </br>
+        <p>
+            Il est important de noter que la catégorie la plus cruciale pour un véhicule autonome, 
+            celle des humains, est sous-représentée dans le dataset.
+        </p>
+    </div>
+</div>
+
+<div id="comparaison" class="container mt-4">
+    <h2>Comparaison entre SegFormer et le modèle de référence</h2>
+    <table class="table table-bordered table-hover">
+      <thead class="thead-dark">
+        <tr>
+          <th>Modèle</th>
+          <th>IoU</th>
+          <th>Précision</th>
+          <th>Durée (min)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>SegFormer</b> (dataset complet)</td>
+          <td>0.7270</td>
+          <td>0.9144</td>
+          <td>12</td>
+        </tr>
+        <tr>
+          <td><b>FPN ResNet101</b> (dataset complet)</td>
+          <td>0.7169</td>
+          <td>0.9042</td>
+          <td>69</td>
+        </tr>
+        <tr>
+          <td><b>SegFormer</b> (dataset de 60 images)</td>
+          <td>0.6307</td>
+          <td>0.8736</td>
+          <td>7</td>
+        </tr>
+        <tr>
+          <td><b>FPN ResNet101</b> (dataset de 60 images)</td>
+          <td>0.4545</td>
+          <td>0.7811</td>
+          <td>10</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+
+<div id="analyse" class="container mt-5">
+    <h2 class="text-center">Analyse comparative de SegFormer : Points forts et faiblesses par catégorie dans les images</h2>
+    <div class="card p-4">
+        <canvas id="iouChart" width="400" height="200"></canvas>
+        <script>
+            Chart.defaults.global.defaultFontSize = 16
+            var ctx = document.getElementById("iouChart").getContext("2d");
+            
+            var barChart = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: {{ iou_data['labels'] | safe }},
+                    datasets : [
+                        {
+                            label: "IoU Score",
+                            backgroundColor: "#0bb4ff",
+                            data: {{ iou_data['values'] | safe }},
+                            borderColor: "rgb(75, 192, 192)",
+                        }
+                    ]
+                },
+                options: {
+                    legend: { display: false },
+                    title: {
+                        display: true,
+                        text: 'IoU score par catégorie',
+                        fontSize: 24,
+                    }
+                }
+            })
+        </script>
+        </br>
+        <canvas id="precisionChart" width="400" height="200"></canvas>
+        <script>
+            Chart.defaults.global.defaultFontSize = 16
+            var ctx = document.getElementById("precisionChart").getContext("2d");
+            
+            var barChart = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: {{ precision_data['labels'] | safe }},
+                    datasets : [
+                        {
+                            label: "Précision",
+                            backgroundColor: "#e60049",
+                            data: {{ precision_data['values'] | safe }},
+                            borderColor: "rgb(75, 192, 192)",
+                        }
+                    ]
+                },
+                options: {
+                    legend: { display: false },
+                    title: {
+                        display: true,
+                        text: 'Précision par catégorie',
+                        fontSize: 24,
+                    }
+                }
+            })
+        </script>
+        </br>
+        <p>
+            Les catégories "flat", "nature", "sky", et "vehicle" affichent des scores élevés tant en termes d'IoU que de précision.
+            Cela suggère que le modèle SegFormer excelle dans la segmentation de ces catégories. 
+            Ces catégories peuvent être considérées comme des points forts du modèle. 
+            Les catégories "object" et "human" présentent des scores plus bas, indiquant des défis potentiels 
+            dans la segmentation de ces types d'objets. Cela peut être dû à la complexité intrinsèque de ces classes.
+
+            Ces résultats révèlent des opportunités d'optimisation pour les catégories "object" et "human". Cela peut nécessiter des ajustements spécifiques dans l'architecture du modèle ou un enrichissement des données d'entraînement pour mieux capturer la variabilité de ces classes.
+        </p>
+    </div>
+</div>
+
+
+<script>
+    function changeActive(element) {
+        // Remove 'active' class from all nav items
+        document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+        });
+
+        // Add 'active' class to the clicked nav item
+        element.parentElement.classList.add('active');
+    }
+</script>
+<!-- Link to Bootstrap JS and jQuery -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
